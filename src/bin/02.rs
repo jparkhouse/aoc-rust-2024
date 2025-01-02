@@ -34,7 +34,6 @@ pub fn part_two(input: &str) -> Option<u64> {
 
 fn parse_input(input: &str) -> Vec<Vec<u64>> {
     let lines = input.lines();
-    let no_of_lines = lines.size_hint().0;
     lines
         .map(|l| {
             l.split(' ')

@@ -1,7 +1,9 @@
 use itertools::Itertools;
-use stack_grid::StackGrid;
+use stack_grid::{CardinalDirection, DiagonalDirection, StackGrid};
 
 advent_of_code::solution!(4);
+
+const N: usize = 39;
 
 pub fn part_one(input: &str) -> Option<u64> {
     let mut max_line_length = 0;
@@ -18,30 +20,56 @@ pub fn part_one(input: &str) -> Option<u64> {
 
     let mut output: u64 = 0;
 
-    let y_max = input.len();
+    let x_max = max_line_length - 3;
+    let y_max = input.len() - 3;
     let mut x = 0;
     let mut y = 0;
     while y < y_max {
-        while x < max_line_length {
+        while x < x_max {
             let search_window = StackGrid::from_str(&input, x, y);
-            for row in search_window.iter_left_to_right() {
-                for (&ch_0, &ch_1, &ch_2, &ch_3) in row.into_iter().tuple_windows() {
-                    if let ('X', 'M', 'A', 'S') = (ch_0, ch_1, ch_2, ch_3) {
-                        output += 1
+            for dir in [
+                CardinalDirection::LeftToRight,
+                CardinalDirection::RightToLeft,
+                CardinalDirection::TopToBottom,
+                CardinalDirection::BottomToTop,
+            ] {
+                for line in search_window.cardinal_iter(dir) {
+                    for word in line.into_iter().tuple_windows() {
+                        match word {
+                            ('X', 'M', 'A', 'S') => output += 1,
+                            _ => {}
+                        }
                     }
                 }
             }
-            for r_row in search_window.iter_left_to_right() {
-                for (&ch_0, &ch_1, &ch_2, &ch_3) in r_row.into_iter().tuple_windows() {
-                    if let ('X', 'M', 'A', 'S') = (ch_0, ch_1, ch_2, ch_3) {
-                        output += 1
+            println!(
+                "after checking all cardinal directions, count is {}",
+                output
+            );
+            for dir in [
+                DiagonalDirection::FromBottomLeft,
+                DiagonalDirection::FromBottomRight,
+                DiagonalDirection::FromTopLeft,
+                DiagonalDirection::FromTopRight,
+            ] {
+                println!("{:?}", dir);
+                for line in search_window.diagonal_iter(dir) {
+                    println!("{:?}", line);
+                    for word in line.into_iter().tuple_windows() {
+                        match word {
+                            ('X', 'M', 'A', 'S') => output += 1,
+                            _ => {}
+                        }
                     }
                 }
             }
+            x += N - 3;
         }
+        x = 0;
+        y += N - 3;
     }
 
-    todo!()
+    Some(output)
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
@@ -49,12 +77,16 @@ pub fn part_two(input: &str) -> Option<u64> {
 }
 
 mod stack_grid {
+    use crate::N;
+
 
     pub(crate) struct StackGrid {
-        search_window: [char; 39 * 39],
-        top_to_bottom: [char; 39 * 39],
-        diag_from_top_left: [char; 39 * 39],
-        diag_from_top_right: [char; 39 * 39],
+        search_window: [char; N * N],
+        top_to_bottom: [char; N * N],
+        diag_from_top_left: [char; N * N],
+        diag_from_top_right: [char; N * N],
+        diag_from_top_left_rev: [char; N * N],
+        diag_from_top_right_rev: [char; N * N],
     }
 
     impl StackGrid {
@@ -63,45 +95,55 @@ mod stack_grid {
             if input.len() < y_position {
                 return Self::new();
             }
-            let mut stack_grid = [' '; 39 * 39];
-            for (ind, line) in input.into_iter().skip(y_position).take(39).enumerate() {
-                for i in 0..39 {
+            let mut stack_grid = [' '; N * N];
+            for (ind, line) in input.into_iter().skip(y_position).take(N).enumerate() {
+                for i in 0..N {
                     if let Some(&ch) = line.get(x_position + i) {
-                        stack_grid[ind * 39 + i] = ch;
+                        stack_grid[ind * N + i] = ch;
                     }
                 }
             }
+            let diag_from_top_left = StackGrid::calculate_top_left_diagonal(stack_grid);
+            let diag_from_top_right = StackGrid::calculate_top_right_diagonal(stack_grid);
             Self {
                 search_window: stack_grid,
                 top_to_bottom: StackGrid::calculate_top_to_bottom(stack_grid),
-                diag_from_top_left: StackGrid::calculate_top_left_diagonal(stack_grid),
-                diag_from_top_right: StackGrid::calculate_top_right_diagonal(stack_grid),
+                diag_from_top_left: diag_from_top_left,
+                diag_from_top_right: diag_from_top_right,
+                diag_from_top_left_rev: calculate_reverse_char_array(diag_from_top_left),
+                diag_from_top_right_rev: calculate_reverse_char_array(diag_from_top_right),
             }
         }
 
         pub fn new() -> Self {
             Self {
-                search_window: [' '; 39 * 39],
-                top_to_bottom: [' '; 39 * 39],
-                diag_from_top_left: [' '; 39 * 39],
-                diag_from_top_right: [' '; 39 * 39],
+                search_window: [' '; N * N],
+                top_to_bottom: [' '; N * N],
+                diag_from_top_left: [' '; N * N],
+                diag_from_top_right: [' '; N * N],
+                diag_from_top_left_rev: [' '; N * N],
+                diag_from_top_right_rev: [' '; N * N],
             }
         }
 
-        pub fn iter_left_to_right(&self) -> LeftToRight<'_> {
-            LeftToRight::new(&self.search_window)
+        pub fn cardinal_iter(&self, direction: CardinalDirection) -> CardinalIter<'_> {
+            use CardinalDirection::*;
+            match direction {
+                LeftToRight => CardinalIter::new(&self.search_window, false),
+                RightToLeft => CardinalIter::new(&self.search_window, true),
+                TopToBottom => CardinalIter::new(&self.top_to_bottom, false),
+                BottomToTop => CardinalIter::new(&self.top_to_bottom, true),
+            }
         }
 
-        pub fn iter_top_to_bottom(&self) -> TopToBottom<'_> {
-            TopToBottom::new(&self.top_to_bottom)
-        }
-
-        pub fn iter_diag_from_top_left(&self) -> DiagFromTopLeft<'_> {
-            DiagFromTopLeft::new(&self.top_to_bottom)
-        }
-
-        pub fn iter_diag_from_top_right(&self) -> DiagFromTopRight<'_> {
-            DiagFromTopRight::new(&self.top_to_bottom)
+        pub fn diagonal_iter(&self, direction: DiagonalDirection) -> DiagonalIter<'_> {
+            use DiagonalDirection::*;
+            match direction {
+                FromTopLeft => DiagonalIter::new(&self.diag_from_top_left),
+                FromTopRight => DiagonalIter::new(&self.diag_from_top_right),
+                FromBottomRight => DiagonalIter::new(&self.diag_from_top_right_rev),
+                FromBottomLeft => DiagonalIter::new(&self.diag_from_top_left_rev),
+            }
         }
 
         /// Takes the in order array, and returns it top to bottom.
@@ -126,91 +168,115 @@ mod stack_grid {
         /// 1 4 7
         /// 2 5 8
         /// ```
-        fn calculate_top_to_bottom(input: [char; 39 * 39]) -> [char; 39 * 39] {
-            let mut output = [' '; 39 * 39];
+        fn calculate_top_to_bottom(input: [char; N * N]) -> [char; N * N] {
+            let mut output = [' '; N * N];
             for (ind, ch) in input.into_iter().enumerate() {
-                // if it were a standard 39x39 grid
+                // if it were a standard NxN grid
                 // you could count all elements,
                 // and get the col and row by:
-                let col = (ind % 39);
-                let row = (ind / 39);
+                let col = ind % N;
+                let row = ind / N;
                 // so then we just swap these to read the other way
-                output[col * 39 + row] = ch;
+                output[col * N + row] = ch;
             }
             output
         }
 
         /// Starts from (0, 0) and outputs the diagonals
-        fn calculate_top_left_diagonal(input: [char; 39 * 39]) -> [char; 39 * 39] {
-            let mut output = [' '; 39 * 39];
+        fn calculate_top_left_diagonal(input: [char; N * N]) -> [char; N * N] {
+            println!("top left diagonal");
+            let mut output = [' '; N * N];
             let mut counter = 0;
-            for i in 0..38 {
+
+            // First half
+            for i in 0..(N - 1) {
                 for j in 0..(i + 1) {
-                    output[counter] = input[j * (39 - 1) + i];
+                    output[counter] = input[j * N + (i - j)];
                     counter += 1;
                 }
             }
-            // and then switch to the next stage
-            for i in (0..39).rev() {
-                for j in 0..(i + 1) {
-                    output[counter] = input[(j as i32 - (i as i32 - 38)) as usize * 39 + (38 - j)];
+
+            // Second half
+            for i in 0..N {
+                for j in 0..(N - i) {
+                    let start = (N - 1) + (i * N);
+                    output[counter] = input[j * (N - 1) + start];
                     counter += 1;
                 }
             }
-            // check we got them all
-            assert_eq!(counter, 39 * 39);
+
+            assert_eq!(counter, N * N);
+            println!("{:?}", output);
             output
         }
 
         /// Starts from (0, 38) and outputs the diagonals
-        fn calculate_top_right_diagonal(input: [char; 39 * 39]) -> [char; 39 * 39] {
-            let mut output = [' '; 39 * 39];
+        fn calculate_top_right_diagonal(input: [char; N * N]) -> [char; N * N] {
+            println!("top right diagonal");
+            let mut output = [' '; N * N];
             let mut counter = 0;
-            for i in 0..38 {
+
+            // First half
+            for i in 0..(N - 1) {
                 for j in 0..(i + 1) {
-                    output[counter] = input[j * (39 + 1) + (38 - i)];
+                    let start = (N - 1) - i;
+                    output[counter] = input[j * (N + 1) + start];
                     counter += 1;
                 }
             }
-            // and then switch to the next stage
-            for i in 0..39 {
-                for j in 0..(39 - i) {
-                    output[counter] = input[(i * 39) + (j * (39 + 1))];
+
+            // Second half
+            for i in 0..N {
+                for j in 0..(N - i) {
+                    let start = i * N;
+                    output[counter] = input[start + j * (N + 1)];
                     counter += 1;
                 }
             }
-            // check we got them all
-            assert_eq!(counter, 39 * 39);
+
+            assert_eq!(counter, N * N);
+            println!("{:?}", output);
             output
         }
     }
 
-    enum CardinalDirection {
+    fn calculate_reverse_char_array(input: [char; N * N]) -> [char; N * N] {
+        let mut output = [' '; N * N];
+        for (ind, ch) in input.into_iter().enumerate() {
+            output[(N * N - 1) - ind] = ch;
+        }
+        output
+    }
+
+    pub enum CardinalDirection {
         LeftToRight,
         RightToLeft,
         TopToBottom,
         BottomToTop,
     }
 
-    enum DiagonalDirection {
+    #[derive(Debug)]
+    pub enum DiagonalDirection {
         FromTopLeft,
         FromTopRight,
         FromBottomRight,
         FromBottomLeft,
     }
 
-    struct CardinalIter<'a> {
-        data: &'a [char; 39 * 39],
+    pub struct CardinalIter<'a> {
+        data: &'a [char; N * N],
         index: usize,
         reversed: bool,
+        done: bool,
     }
 
     impl<'a> CardinalIter<'a> {
-        fn new(data: &'a [char; 39 * 39], is_reversed: bool) -> Self {
+        fn new(data: &'a [char; N * N], is_reversed: bool) -> Self {
             Self {
                 data: data,
-                index: if is_reversed { 38 } else { 0 },
+                index: if is_reversed { N - 1 } else { 0 },
                 reversed: is_reversed,
+                done: false,
             }
         }
     }
@@ -219,38 +285,44 @@ mod stack_grid {
         type Item = &'a [char];
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.index >= 39 && !self.reversed {
+            if self.done {
                 return None;
             }
 
-            if self.index == 0 && self.reversed {
-                return None;
-            }
-
-            let output = &self.data[(self.index * 39)..((self.index + 1) * 39)];
+            let output = &self.data[(self.index * N)..((self.index + 1) * N)];
             match self.reversed {
-                false => self.index += 1,
-                true => self.index -= 1,
+                false => {
+                    if self.index == N - 1 {
+                        self.done = true
+                    } else {
+                        self.index += 1
+                    }
+                }
+                true => {
+                    if self.index == 0 {
+                        self.done = true
+                    } else {
+                        self.index -= 1
+                    }
+                }
             };
 
             Some(output)
         }
     }
 
-    stuct DiagonalIter<'a> {
-        data: &'a [char; 39 * 39],
+    pub struct DiagonalIter<'a> {
+        data: &'a [char; N * N],
         index: usize,
-        reversed: bool,
-        direction_flip: bool
+        direction_flip: bool,
     }
 
     impl<'a> DiagonalIter<'a> {
-        fn new(data: &'a [char; 39 * 39], is_reversed: bool) -> Self {
+        fn new(data: &'a [char; N * N]) -> Self {
             Self {
                 data: data,
-                index: 0,
-                reversed: is_reversed,
-                direction_flip: false
+                index: 1,
+                direction_flip: false,
             }
         }
     }
@@ -268,89 +340,20 @@ mod stack_grid {
                     let output: &[char] =
                         &self.data[(0..self.index).sum()..((0..(self.index + 1)).sum())];
                     self.index += 1;
-                    if self.index == 39 {
-                        self.direction = true
+                    if self.index == N {
+                        self.direction_flip = true
                     }
                     Some(output)
                 }
                 true => {
                     // we have now flipped
                     // all the ones we have already done
-                    let modifier: usize = (0..39).sum();
-                    let output: &[char] = &self.data[(modifier..modifier + (39 - self.index)).sum()
-                        ..((modifier..modifier + (38 - self.index)).sum())];
-                    self.index += 1;
-                    Some(output)
-                }
-            }
-        }
-    }
-
-    struct DiagFromTopLeft<'a> {
-        data: &'a [char; 39 * 39],
-        index: usize,
-        direction: bool,
-    }
-
-    impl<'a> DiagFromTopLeft<'a> {
-        fn new(data: &'a [char; 39 * 39]) -> Self {
-            DiagFromTopLeft {
-                data: data,
-                index: 0,
-                direction: false,
-            }
-        }
-    }
-
-    impl<'a> Iterator for DiagFromTopLeft<'a> {
-        type Item = &'a [char];
-
-        fn next(&mut self) -> Option<Self::Item> {
-            
-        }
-    }
-
-    struct DiagFromTopRight<'a> {
-        data: &'a [char; 39 * 39],
-        index: usize,
-        direction: bool,
-    }
-
-    impl<'a> DiagFromTopRight<'a> {
-        fn new(data: &'a [char; 39 * 39]) -> Self {
-            DiagFromTopRight {
-                data: data,
-                index: 0,
-                direction: false,
-            }
-        }
-    }
-
-    impl<'a> Iterator for DiagFromTopRight<'a> {
-        type Item = &'a [char];
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.index == 0 && self.direction {
-                return None;
-            }
-            match self.direction {
-                false => {
-                    // we have not yet flipped
-                    let output: &[char] =
-                        &self.data[(0..self.index).sum()..((0..(self.index + 1)).sum())];
-                    self.index += 1;
-                    if self.index == 39 {
-                        self.direction = true
-                    }
-                    Some(output)
-                }
-                true => {
-                    // we have now flipped
-                    // all the ones we have already done
-                    let modifier: usize = (0..39).sum();
-                    let output: &[char] = &self.data[(modifier..modifier + (39 - self.index)).sum()
-                        ..((modifier..modifier + (38 - self.index)).sum())];
-                    self.index += 1;
+                    let first_half_length: usize = (0..N).sum();
+                    let already_got_from_second_half: usize = ((self.index + 1)..(N+1)).sum();
+                    let start = first_half_length + already_got_from_second_half;
+                    let end = first_half_length + already_got_from_second_half + self.index;
+                    let output: &[char] = &self.data[start..end];
+                    self.index -= 1;
                     Some(output)
                 }
             }
