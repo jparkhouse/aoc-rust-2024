@@ -1,364 +1,220 @@
-use itertools::Itertools;
-use stack_grid::{CardinalDirection, DiagonalDirection, StackGrid};
-
 advent_of_code::solution!(4);
-
-const N: usize = 39;
+use std::iter::FromIterator;
 
 pub fn part_one(input: &str) -> Option<u64> {
-    let mut max_line_length = 0;
-    let input: Vec<Vec<char>> = input
-        .lines()
-        .map(|line| {
-            let v: Vec<char> = line.chars().collect();
-            if v.len() > max_line_length {
-                max_line_length = v.len();
+    let mut output: u64 = 0;
+    let input: Vec<&str> = input.lines().collect();
+    let n = input.len();
+    let input: Vec<char> = input.iter().flat_map(|line| line.chars()).collect();
+
+    // the coords of all the X chars
+    let xs: Vec<Coord> = input
+        .iter()
+        .enumerate()
+        .filter_map(|(raw_ind, &ch)| {
+            if ch == 'X' {
+                Some(Coord::from_raw_ind(raw_ind, n))
+            } else {
+                None
             }
-            v
         })
         .collect();
 
-    let mut output: u64 = 0;
-
-    let x_max = max_line_length - 3;
-    let y_max = input.len() - 3;
-    let mut x = 0;
-    let mut y = 0;
-    while y < y_max {
-        while x < x_max {
-            let search_window = StackGrid::from_str(&input, x, y);
-            for dir in [
-                CardinalDirection::LeftToRight,
-                CardinalDirection::RightToLeft,
-                CardinalDirection::TopToBottom,
-                CardinalDirection::BottomToTop,
-            ] {
-                for line in search_window.cardinal_iter(dir) {
-                    for word in line.into_iter().tuple_windows() {
-                        match word {
-                            ('X', 'M', 'A', 'S') => output += 1,
-                            _ => {}
-                        }
+    [
+        Direction::Up,
+        Direction::UpRight,
+        Direction::Right,
+        Direction::DownRight,
+        Direction::Down,
+        Direction::DownLeft,
+        Direction::Left,
+        Direction::UpLeft,
+    ]
+    .into_iter()
+    .for_each(|dir| {
+        xs.iter().for_each(|x_loc| {
+            x_loc
+                .shift(dir, n)
+                .and_then(|m_loc| {
+                    if let Some('M') = input.get(
+                        m_loc
+                            .to_raw_ind(n)
+                            .expect("shift should rule out invalid coords"),
+                    ) {
+                        return m_loc.shift(dir, n);
                     }
-                }
-            }
-            println!(
-                "after checking all cardinal directions, count is {}",
-                output
-            );
-            for dir in [
-                DiagonalDirection::FromBottomLeft,
-                DiagonalDirection::FromBottomRight,
-                DiagonalDirection::FromTopLeft,
-                DiagonalDirection::FromTopRight,
-            ] {
-                println!("{:?}", dir);
-                for line in search_window.diagonal_iter(dir) {
-                    println!("{:?}", line);
-                    for word in line.into_iter().tuple_windows() {
-                        match word {
-                            ('X', 'M', 'A', 'S') => output += 1,
-                            _ => {}
-                        }
+                    None
+                })
+                .and_then(|a_loc| {
+                    if let Some('A') = input.get(
+                        a_loc
+                            .to_raw_ind(n)
+                            .expect("shift should rule out invalid coords"),
+                    ) {
+                        return a_loc.shift(dir, n);
                     }
-                }
-            }
-            x += N - 3;
-        }
-        x = 0;
-        y += N - 3;
-    }
-
+                    None
+                })
+                .and_then(|s_loc| {
+                    if let Some('S') = input.get(
+                        s_loc
+                            .to_raw_ind(n)
+                            .expect("shift should rule out invalid coords"),
+                    ) {
+                        return Some(s_loc);
+                    }
+                    None
+                })
+                .map(|_| output += 1);
+        });
+    });
     Some(output)
 }
 
-pub fn part_two(input: &str) -> Option<u64> {
-    None
+#[derive(Debug, Clone, Copy)]
+struct Coord {
+    row: usize,
+    col: usize,
 }
 
-mod stack_grid {
-    use crate::N;
-
-
-    pub(crate) struct StackGrid {
-        search_window: [char; N * N],
-        top_to_bottom: [char; N * N],
-        diag_from_top_left: [char; N * N],
-        diag_from_top_right: [char; N * N],
-        diag_from_top_left_rev: [char; N * N],
-        diag_from_top_right_rev: [char; N * N],
+impl Coord {
+    fn to_raw_ind(&self, n: usize) -> Option<usize> {
+        if self.row >= n || self.col >= n {
+            return None;
+        }
+        Some(self.row * n + self.col)
     }
 
-    impl StackGrid {
-        /// Attempts to fill the StackGrid from the (`position`, `position`) position of the heap-allocated object
-        pub fn from_str(input: &Vec<Vec<char>>, x_position: usize, y_position: usize) -> Self {
-            if input.len() < y_position {
-                return Self::new();
+    fn from_raw_ind(raw_ind: usize, n: usize) -> Self {
+        Self {
+            row: raw_ind / n,
+            col: raw_ind % n,
+        }
+    }
+
+    fn shift_up(self, _n: usize) -> Option<Self> {
+        if self.row > 0 {
+            return Some(Self {
+                row: self.row - 1,
+                col: self.col,
+            });
+        }
+        None
+    }
+
+    fn shift_right(self, n: usize) -> Option<Self> {
+        if self.col < n - 1 {
+            return Some(Self {
+                row: self.row,
+                col: self.col + 1,
+            });
+        }
+        None
+    }
+
+    fn shift_down(self, n: usize) -> Option<Self> {
+        if self.row < n - 1 {
+            return Some(Self {
+                row: self.row + 1,
+                col: self.col,
+            });
+        }
+        None
+    }
+
+    fn shift_left(self, _n: usize) -> Option<Self> {
+        if self.col > 0 {
+            return Some(Self {
+                row: self.row,
+                col: self.col - 1,
+            });
+        }
+        None
+    }
+
+    fn shift(self, direction: Direction, n: usize) -> Option<Self> {
+        use Direction::*;
+        match direction {
+            Up => self.shift_up(n),
+            UpRight => self.shift_up(n).and_then(|c| c.shift_right(n)),
+            Right => self.shift_right(n),
+            DownRight => self.shift_down(n).and_then(|c| c.shift_right(n)),
+            Down => self.shift_down(n),
+            DownLeft => self.shift_down(n).and_then(|c| c.shift_left(n)),
+            Left => self.shift_left(n),
+            UpLeft => self.shift_up(n).and_then(|c| c.shift_left(n)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Direction {
+    Up,
+    UpRight,
+    Right,
+    DownRight,
+    Down,
+    DownLeft,
+    Left,
+    UpLeft,
+}
+
+pub fn part_two(input: &str) -> Option<u64> {
+    // initialise some stuff
+    let mut output: u64 = 0;
+    let input: Vec<&str> = input.lines().collect();
+    let n = input.len();
+    let input: Vec<char> = input.iter().flat_map(|line| line.chars()).collect();
+
+    // this time we find the 'A' chars
+    let a_chars: Vec<Coord> = input
+        .iter()
+        .enumerate()
+        .filter_map(|(raw_ind, &ch)| {
+            if ch == 'A' {
+                Some(Coord::from_raw_ind(raw_ind, n))
+            } else {
+                None
             }
-            let mut stack_grid = [' '; N * N];
-            for (ind, line) in input.into_iter().skip(y_position).take(N).enumerate() {
-                for i in 0..N {
-                    if let Some(&ch) = line.get(x_position + i) {
-                        stack_grid[ind * N + i] = ch;
+        })
+        .collect();
+
+    // now we need to check around the 'A' chars, shifting in the diagonals, and look for a valid pattern
+    a_chars.into_iter().for_each(|coord| {
+        let diags: Vec<Option<char>> = [
+            Direction::UpRight,
+            Direction::DownRight,
+            Direction::DownLeft,
+            Direction::UpLeft,
+        ]
+        .into_iter()
+        .map(|dir| {
+            // check we can shift in that direction
+            if let Some(diag) = coord.clone().shift(dir, n) {
+                // check that there is a char there in the input
+                if let Some(&ch) = input.get(
+                    diag.to_raw_ind(n)
+                        .expect("shift should rule out invalid coords"),
+                ) {
+                    // only return the chars we care about
+                    if ch == 'M' || ch == 'S' {
+                        return Some(ch);
                     }
                 }
             }
-            let diag_from_top_left = StackGrid::calculate_top_left_diagonal(stack_grid);
-            let diag_from_top_right = StackGrid::calculate_top_right_diagonal(stack_grid);
-            Self {
-                search_window: stack_grid,
-                top_to_bottom: StackGrid::calculate_top_to_bottom(stack_grid),
-                diag_from_top_left: diag_from_top_left,
-                diag_from_top_right: diag_from_top_right,
-                diag_from_top_left_rev: calculate_reverse_char_array(diag_from_top_left),
-                diag_from_top_right_rev: calculate_reverse_char_array(diag_from_top_right),
-            }
+            // otherwise return None
+            None
+        })
+        .collect();
+        match diags.as_slice() {
+            [Some('M'), Some('M'), Some('S'), Some('S')] => output += 1,
+            [Some('S'), Some('M'), Some('M'), Some('S')] => output += 1,
+            [Some('S'), Some('S'), Some('M'), Some('M')] => output += 1,
+            [Some('M'), Some('S'), Some('S'), Some('M')] => output += 1,
+            _ => {}
         }
-
-        pub fn new() -> Self {
-            Self {
-                search_window: [' '; N * N],
-                top_to_bottom: [' '; N * N],
-                diag_from_top_left: [' '; N * N],
-                diag_from_top_right: [' '; N * N],
-                diag_from_top_left_rev: [' '; N * N],
-                diag_from_top_right_rev: [' '; N * N],
-            }
-        }
-
-        pub fn cardinal_iter(&self, direction: CardinalDirection) -> CardinalIter<'_> {
-            use CardinalDirection::*;
-            match direction {
-                LeftToRight => CardinalIter::new(&self.search_window, false),
-                RightToLeft => CardinalIter::new(&self.search_window, true),
-                TopToBottom => CardinalIter::new(&self.top_to_bottom, false),
-                BottomToTop => CardinalIter::new(&self.top_to_bottom, true),
-            }
-        }
-
-        pub fn diagonal_iter(&self, direction: DiagonalDirection) -> DiagonalIter<'_> {
-            use DiagonalDirection::*;
-            match direction {
-                FromTopLeft => DiagonalIter::new(&self.diag_from_top_left),
-                FromTopRight => DiagonalIter::new(&self.diag_from_top_right),
-                FromBottomRight => DiagonalIter::new(&self.diag_from_top_right_rev),
-                FromBottomLeft => DiagonalIter::new(&self.diag_from_top_left_rev),
-            }
-        }
-
-        /// Takes the in order array, and returns it top to bottom.
-        /// For example:
-        /// ```
-        /// 0 1 2
-        /// 3 4 5
-        /// 6 7 8
-        ///
-        ///
-        /// position 0 -> (0 % 3 = 0, 0 / 3 = 0)
-        /// position 1 -> (1 % 3 = 1, 1 / 3 = 0)
-        /// position 2 -> (2 % 3 = 2, 2 / 3 = 0)
-        /// position 3 -> (3 % 3 = 0, 3 / 3 = 1)
-        /// position 4 -> (4 % 3 = 1, 4 / 3 = 1)
-        /// etc
-        /// ```
-        ///
-        /// If we swap these indices around, we then get:
-        /// ```
-        /// 0 3 6
-        /// 1 4 7
-        /// 2 5 8
-        /// ```
-        fn calculate_top_to_bottom(input: [char; N * N]) -> [char; N * N] {
-            let mut output = [' '; N * N];
-            for (ind, ch) in input.into_iter().enumerate() {
-                // if it were a standard NxN grid
-                // you could count all elements,
-                // and get the col and row by:
-                let col = ind % N;
-                let row = ind / N;
-                // so then we just swap these to read the other way
-                output[col * N + row] = ch;
-            }
-            output
-        }
-
-        /// Starts from (0, 0) and outputs the diagonals
-        fn calculate_top_left_diagonal(input: [char; N * N]) -> [char; N * N] {
-            println!("top left diagonal");
-            let mut output = [' '; N * N];
-            let mut counter = 0;
-
-            // First half
-            for i in 0..(N - 1) {
-                for j in 0..(i + 1) {
-                    output[counter] = input[j * N + (i - j)];
-                    counter += 1;
-                }
-            }
-
-            // Second half
-            for i in 0..N {
-                for j in 0..(N - i) {
-                    let start = (N - 1) + (i * N);
-                    output[counter] = input[j * (N - 1) + start];
-                    counter += 1;
-                }
-            }
-
-            assert_eq!(counter, N * N);
-            println!("{:?}", output);
-            output
-        }
-
-        /// Starts from (0, 38) and outputs the diagonals
-        fn calculate_top_right_diagonal(input: [char; N * N]) -> [char; N * N] {
-            println!("top right diagonal");
-            let mut output = [' '; N * N];
-            let mut counter = 0;
-
-            // First half
-            for i in 0..(N - 1) {
-                for j in 0..(i + 1) {
-                    let start = (N - 1) - i;
-                    output[counter] = input[j * (N + 1) + start];
-                    counter += 1;
-                }
-            }
-
-            // Second half
-            for i in 0..N {
-                for j in 0..(N - i) {
-                    let start = i * N;
-                    output[counter] = input[start + j * (N + 1)];
-                    counter += 1;
-                }
-            }
-
-            assert_eq!(counter, N * N);
-            println!("{:?}", output);
-            output
-        }
-    }
-
-    fn calculate_reverse_char_array(input: [char; N * N]) -> [char; N * N] {
-        let mut output = [' '; N * N];
-        for (ind, ch) in input.into_iter().enumerate() {
-            output[(N * N - 1) - ind] = ch;
-        }
-        output
-    }
-
-    pub enum CardinalDirection {
-        LeftToRight,
-        RightToLeft,
-        TopToBottom,
-        BottomToTop,
-    }
-
-    #[derive(Debug)]
-    pub enum DiagonalDirection {
-        FromTopLeft,
-        FromTopRight,
-        FromBottomRight,
-        FromBottomLeft,
-    }
-
-    pub struct CardinalIter<'a> {
-        data: &'a [char; N * N],
-        index: usize,
-        reversed: bool,
-        done: bool,
-    }
-
-    impl<'a> CardinalIter<'a> {
-        fn new(data: &'a [char; N * N], is_reversed: bool) -> Self {
-            Self {
-                data: data,
-                index: if is_reversed { N - 1 } else { 0 },
-                reversed: is_reversed,
-                done: false,
-            }
-        }
-    }
-
-    impl<'a> Iterator for CardinalIter<'a> {
-        type Item = &'a [char];
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.done {
-                return None;
-            }
-
-            let output = &self.data[(self.index * N)..((self.index + 1) * N)];
-            match self.reversed {
-                false => {
-                    if self.index == N - 1 {
-                        self.done = true
-                    } else {
-                        self.index += 1
-                    }
-                }
-                true => {
-                    if self.index == 0 {
-                        self.done = true
-                    } else {
-                        self.index -= 1
-                    }
-                }
-            };
-
-            Some(output)
-        }
-    }
-
-    pub struct DiagonalIter<'a> {
-        data: &'a [char; N * N],
-        index: usize,
-        direction_flip: bool,
-    }
-
-    impl<'a> DiagonalIter<'a> {
-        fn new(data: &'a [char; N * N]) -> Self {
-            Self {
-                data: data,
-                index: 1,
-                direction_flip: false,
-            }
-        }
-    }
-
-    impl<'a> Iterator for DiagonalIter<'a> {
-        type Item = &'a [char];
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.index == 0 && self.direction_flip {
-                return None;
-            }
-            match self.direction_flip {
-                false => {
-                    // we have not yet flipped
-                    let output: &[char] =
-                        &self.data[(0..self.index).sum()..((0..(self.index + 1)).sum())];
-                    self.index += 1;
-                    if self.index == N {
-                        self.direction_flip = true
-                    }
-                    Some(output)
-                }
-                true => {
-                    // we have now flipped
-                    // all the ones we have already done
-                    let first_half_length: usize = (0..N).sum();
-                    let already_got_from_second_half: usize = ((self.index + 1)..(N+1)).sum();
-                    let start = first_half_length + already_got_from_second_half;
-                    let end = first_half_length + already_got_from_second_half + self.index;
-                    let output: &[char] = &self.data[start..end];
-                    self.index -= 1;
-                    Some(output)
-                }
-            }
-        }
-    }
+    });
+    Some(output)
 }
 
 #[cfg(test)]
@@ -374,6 +230,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(9));
     }
 }

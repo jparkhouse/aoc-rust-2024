@@ -2,7 +2,7 @@
 name = "advent_of_code"
 version = "0.11.0"
 authors = ["Felix Spöttel <1682504+fspoettel@users.noreply.github.com>"]
-edition = "2021"
+edition = "2024"
 default-run = "advent_of_code"
 publish = false
 
@@ -24,7 +24,7 @@ test_lib = []
 # Template dependencies
 chrono = { version = "0.4.38", optional = true }
 dhat = { version = "0.3.3", optional = true }
-itertools = "0.13.0"
+itertools = "0.14.0"
 pico-args = "0.5.0"
 tinyjson = "2.5.1"
 
