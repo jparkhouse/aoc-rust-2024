@@ -1,5 +1,4 @@
 advent_of_code::solution!(4);
-use std::iter::FromIterator;
 
 pub fn part_one(input: &str) -> Option<u64> {
     let mut output: u64 = 0;
