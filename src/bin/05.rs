@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
+use advent_of_code::shared;
 use itertools::Itertools;
 
 advent_of_code::solution!(5);
@@ -94,11 +95,11 @@ fn parse_input(input: &str) -> (HashMap<u64, HashSet<u64>>, Vec<Vec<u64>>) {
             // a rule
             Some('|') => {
                 // get the first number ('aa|bb')
-                let num_1 = parse_numeric(v_line[0]).expect("rule format") * 10
-                    + parse_numeric(v_line[1]).expect("rule format");
+                let num_1 = shared::match_numeric(v_line[0]).expect("rule format") * 10
+                    + shared::match_numeric(v_line[1]).expect("rule format");
                 // get the second number
-                let num_2 = parse_numeric(v_line[3]).expect("rule format") * 10
-                    + parse_numeric(v_line[4]).expect("rule format");
+                let num_2 = shared::match_numeric(v_line[3]).expect("rule format") * 10
+                    + shared::match_numeric(v_line[4]).expect("rule format");
                 // see if we have an entry for that rule yet
                 let mut rules_updated = match rule_map.get(&num_1) {
                     // get the current set of pages
@@ -120,12 +121,12 @@ fn parse_input(input: &str) -> (HashMap<u64, HashSet<u64>>, Vec<Vec<u64>>) {
                     // fun new tool for grouping up an iterator
                     .batching(|it| match it.next() {
                         // if we have another character to pass
-                        Some(x) if parse_numeric(x).is_some() => match it.next() {
+                        Some(x) if shared::match_numeric(x).is_some() => match it.next() {
                             // check to ensure we have two
-                            Some(y) if parse_numeric(y).is_some() => Some(
+                            Some(y) if shared::match_numeric(y).is_some() => Some(
                                 // return the 2-digit number they make
-                                parse_numeric(x).expect("page number format") * 10
-                                    + parse_numeric(y).expect("page number format"),
+                                shared::match_numeric(x).expect("page number format") * 10
+                                    + shared::match_numeric(y).expect("page number format"),
                             ),
                             _ => None,
                         },
@@ -140,23 +141,6 @@ fn parse_input(input: &str) -> (HashMap<u64, HashSet<u64>>, Vec<Vec<u64>>) {
         }
     });
     (rule_map, pages)
-}
-
-fn parse_numeric(ch: char) -> Option<u64> {
-    let num: u64 = match ch {
-        '0' => 0,
-        '1' => 1,
-        '2' => 2,
-        '3' => 3,
-        '4' => 4,
-        '5' => 5,
-        '6' => 6,
-        '7' => 7,
-        '8' => 8,
-        '9' => 9,
-        _ => return None,
-    };
-    Some(num)
 }
 
 #[cfg(test)]
