@@ -6,20 +6,16 @@ advent_of_code::solution!(6);
 
 pub fn part_one(input: &str) -> Option<u64> {
     let debug = false;
-    let (lab_width, lab_hieght) = get_lab_dimensions(input);
+    let bounds = get_lab_dimensions(input);
 
-    let (lab, guard) = parse_input(input, &lab_width, &lab_hieght);
+    let (lab, guard) = parse_input(input, &bounds);
     let all_visited_locs = get_finite_path_information(guard, &lab, debug);
     Some(all_visited_locs.len() as u64)
 }
 
-fn parse_input<'a>(
-    input: &str,
-    lab_width: &'a usize,
-    lab_height: &'a usize,
-) -> (LabGrid<'a>, Guard<'a>) {
+fn parse_input<'a>(input: &str, bounds: &'a LabSize) -> (LabGrid<'a>, Guard<'a>) {
     // use helper function to generate our lab
-    let lab = build_lab_grid_from_str(input, &lab_width, &lab_height);
+    let lab = build_lab_grid_from_str(input, &bounds);
     // find the guard in the lab, and then initialise a Guard instance
     let (guard_starting_position, _) = input
         .lines()
@@ -27,24 +23,23 @@ fn parse_input<'a>(
         .enumerate()
         .find(|(_, ch)| *ch == '^')
         .expect("valid input must have a guard");
-    let guard = Guard::new(Coord::from_raw_ind(
-        guard_starting_position,
-        &lab_width,
-        &lab_height,
-    ));
+    let guard = Guard::new(Coord::from_raw_ind(guard_starting_position, &bounds));
     (lab, guard)
 }
 
-fn get_lab_dimensions(input: &str) -> (usize, usize) {
+fn get_lab_dimensions(input: &str) -> LabSize {
     // collect our static grid size references
-    let lab_height = input.lines().count();
-    let lab_width = input
+    let height = input.lines().count();
+    let width = input
         .lines()
         .next()
         .expect("input should not be empty")
         .chars()
         .count();
-    (lab_height, lab_width)
+    LabSize {
+        col_max: width,
+        row_max: height,
+    }
 }
 
 fn get_finite_path_information(
@@ -70,12 +65,7 @@ fn get_finite_path_information(
                         if inner_guard.is_blocked_by(obst) {
                             if debug {
                                 println!("guard has hit obstacle");
-                                display_grid(
-                                    &inner_guard,
-                                    &lab,
-                                    inner_guard.location.col_height,
-                                    inner_guard.location.row_width,
-                                );
+                                display_grid(&inner_guard, &lab, inner_guard.location.bounds);
                             }
                             inner_guard.rotate();
                             next_obstacle = get_next_obst(&lab, &inner_guard);
@@ -100,16 +90,16 @@ fn get_finite_path_information(
     guard.expect_err("only breaks from loop if err")
 }
 
-fn display_grid(guard: &Guard, lab: &LabGrid, lab_height: &usize, lab_width: &usize) {
+fn display_grid(guard: &Guard, lab: &LabGrid, lab_bounds: &LabSize) {
     // initialise grid
-    let mut grid = vec!['.'; lab_height * lab_width];
+    let mut grid = vec!['.'; lab_bounds.row_max * lab_bounds.col_max];
     // populate with obstacles
     lab.layout.iter().for_each(|obst_coord| {
         grid[obst_coord.to_raw_ind()] = '#';
     });
     // show all the places the guard has been
     guard.visited.iter().for_each(|((row, col), _)| {
-        let raw_ind = row * lab_width + col;
+        let raw_ind = row * lab_bounds.col_max + col;
         match grid.get(raw_ind) {
             Some('#') => {
                 panic!("Guard has collided with an obstacle at ({}, {})", row, col);
@@ -150,8 +140,8 @@ fn display_grid(guard: &Guard, lab: &LabGrid, lab_height: &usize, lab_width: &us
         _ => {}
     }
     // finally display the grid
-    (0..*lab_height).for_each(|row_ind| {
-        let row = (row_ind * *lab_width..(row_ind + 1) * *lab_width)
+    (0..lab_bounds.row_max).for_each(|row_ind| {
+        let row = (row_ind * lab_bounds.col_max..(row_ind + 1) * lab_bounds.col_max)
             .map(|raw_ind| grid[raw_ind])
             .join(" ");
         println!("{}", row)
@@ -206,8 +196,8 @@ fn get_next_obst<'a>(lab: &'a LabGrid, guard: &Guard) -> Option<&'a Coord<'a>> {
 
 pub fn part_two(input: &str) -> Option<u64> {
     // TODO: make this more performant
-    let (lab_width, lab_height) = get_lab_dimensions(input);
-    let (mut original_lab, original_guard) = parse_input(input, &lab_width, &lab_height);
+    let bounds = get_lab_dimensions(input);
+    let (mut original_lab, original_guard) = parse_input(input, &bounds);
     let original_guard_loc: (usize, usize) = original_guard.location.clone().into();
     let potential_object_locations: Vec<(usize, usize)> =
         get_finite_path_information(original_guard.clone(), &original_lab, false)
@@ -224,8 +214,7 @@ pub fn part_two(input: &str) -> Option<u64> {
             let new_obst = Coord {
                 row: loc.0,
                 col: loc.1,
-                row_width: &lab_width,
-                col_height: &lab_height,
+                bounds: &bounds,
             };
             // now we need to calculate the path, returning true if we detect a loop
             // and false if the guard exits the lab before a loop is detected
@@ -237,12 +226,17 @@ pub fn part_two(input: &str) -> Option<u64> {
     Some(object_locations as u64)
 }
 
+#[derive(Debug, PartialEq)]
+struct LabSize {
+    col_max: usize,
+    row_max: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Coord<'a> {
     row: usize,
     col: usize,
-    row_width: &'a usize,
-    col_height: &'a usize,
+    bounds: &'a LabSize,
 }
 
 impl<'a> Coord<'a> {
@@ -251,8 +245,7 @@ impl<'a> Coord<'a> {
             Some(Self {
                 row: self.row,
                 col: self.col - 1,
-                row_width: self.row_width,
-                col_height: self.col_height,
+                bounds: self.bounds,
             })
         } else {
             None
@@ -260,12 +253,11 @@ impl<'a> Coord<'a> {
     }
 
     fn shift_right(self) -> Option<Self> {
-        if self.col < self.row_width - 1 {
+        if self.col < self.bounds.col_max - 1 {
             Some(Self {
                 row: self.row,
                 col: self.col + 1,
-                row_width: self.row_width,
-                col_height: self.col_height,
+                bounds: self.bounds,
             })
         } else {
             None
@@ -277,8 +269,7 @@ impl<'a> Coord<'a> {
             Some(Self {
                 row: self.row - 1,
                 col: self.col,
-                row_width: self.row_width,
-                col_height: self.col_height,
+                bounds: self.bounds,
             })
         } else {
             None
@@ -286,12 +277,11 @@ impl<'a> Coord<'a> {
     }
 
     fn shift_down(self) -> Option<Self> {
-        if self.row < self.col_height - 1 {
+        if self.row < self.bounds.row_max - 1 {
             Some(Self {
                 row: self.row + 1,
                 col: self.col,
-                row_width: self.row_width,
-                col_height: self.col_height,
+                bounds: self.bounds,
             })
         } else {
             None
@@ -310,18 +300,16 @@ impl<'a> Coord<'a> {
         }
     }
 
-    pub fn from_raw_ind(raw_ind: usize, grid_width: &'a usize, grid_height: &'a usize) -> Self {
+    pub fn from_raw_ind(raw_ind: usize, bounds: &'a LabSize) -> Self {
         Self {
-            row: raw_ind / *grid_width,
-            col: raw_ind % *grid_width,
-            row_width: grid_width,
-            col_height: grid_height,
+            row: raw_ind / bounds.col_max,
+            col: raw_ind % bounds.col_max,
+            bounds,
         }
     }
 
     pub fn to_raw_ind(&self) -> usize {
-        let row_len = self.row_width.clone();
-        self.row * row_len + self.col
+        self.row * self.bounds.col_max + self.col
     }
 }
 
@@ -478,11 +466,7 @@ impl IncrementLocationHistory for HashMap<(usize, usize), LocationHistory> {
     }
 }
 
-fn build_lab_grid_from_str<'a>(
-    input: &str,
-    row_width: &'a usize,
-    col_height: &'a usize,
-) -> LabGrid<'a> {
+fn build_lab_grid_from_str<'a>(input: &str, lab_bounds: &'a LabSize) -> LabGrid<'a> {
     let rows: Vec<&str> = input.lines().collect();
     let layout: Vec<Coord> = rows
         .into_iter()
@@ -490,7 +474,7 @@ fn build_lab_grid_from_str<'a>(
         .enumerate()
         .filter_map(|(ind, ch)| {
             if ch == '#' {
-                Some(Coord::from_raw_ind(ind, row_width, col_height))
+                Some(Coord::from_raw_ind(ind, lab_bounds))
             } else {
                 None
             }
@@ -634,15 +618,14 @@ mod tests {
     fn returns_true_when_finding_a_loop() {
         // arrange
         let input = advent_of_code::template::read_file("examples", DAY);
-        let (w, h) = get_lab_dimensions(&input);
+        let bounds = get_lab_dimensions(&input);
 
-        let (mut lab, guard) = parse_input(&input, &w, &h);
-        let (lab_copy, _) = parse_input(&input, &w, &h);
+        let (mut lab, guard) = parse_input(&input, &bounds);
+        let (lab_copy, _) = parse_input(&input, &bounds);
         let new_obst = Coord {
             row: 7,
             col: 6,
-            row_width: &w,
-            col_height: &h,
+            bounds: &bounds,
         };
 
         // act
@@ -659,8 +642,8 @@ mod tests {
     fn returns_false_when_no_loop_found() {
         // arrange
         let input = advent_of_code::template::read_file("examples", DAY);
-        let (w, h) = get_lab_dimensions(&input);
-        let (lab, guard) = parse_input(&input, &w, &h);
+        let bounds = get_lab_dimensions(&input);
+        let (lab, guard) = parse_input(&input, &bounds);
 
         // act
         let output = check_for_path_loop(guard, &lab);
