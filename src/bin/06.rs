@@ -64,7 +64,7 @@ fn get_finite_path_information(
                     if let Some(obst) = next_obstacle {
                         if inner_guard.is_blocked_by(obst) {
                             if debug {
-                                println!("guard has hit obstacle");
+                                // println!("guard has hit obstacle");
                                 display_grid(&inner_guard, &lab, inner_guard.location.bounds);
                             }
                             inner_guard.rotate();
@@ -88,6 +88,61 @@ fn get_finite_path_information(
         }
     }
     guard.expect_err("only breaks from loop if err")
+}
+
+#[derive(Debug, Clone)]
+struct GuardStep<'a> {
+    location: Coord<'a>,
+    direction: Direction,
+}
+
+impl<'a> From<Guard<'a>> for GuardStep<'a> {
+    fn from(value: Guard<'a>) -> Self {
+        GuardStep {
+            location: value.location,
+            direction: value.direction,
+        }
+    }
+}
+
+impl<'a> From<GuardStep<'a>> for Guard<'a> {
+    fn from(value: GuardStep<'a>) -> Self {
+        Guard {
+            location: value.location,
+            direction: value.direction,
+            visited: HashMap::new(),
+        }
+    }
+}
+
+fn get_path<'a>(mut guard: Guard<'a>, lab: &LabGrid) -> Vec<GuardStep<'a>> {
+    let mut next_obst = get_next_obst(lab, &guard);
+    let mut output = Vec::new();
+    // save the original location
+    output.push(guard.clone().into());
+    loop {
+        let mut path_clear = false;
+        while !path_clear {
+            if let Some(obst) = next_obst {
+                if guard.is_blocked_by(obst) {
+                    guard.rotate();
+                    next_obst = get_next_obst(lab, &guard);
+                } else {
+                    path_clear = true;
+                }
+            } else {
+                path_clear = true;
+            }
+        }
+        match guard.move_one_step() {
+            Ok(new_guard) => {
+                output.push(new_guard.clone().into());
+                guard = new_guard;
+            }
+            Err(_) => break,
+        }
+    }
+    output
 }
 
 fn display_grid(guard: &Guard, lab: &LabGrid, lab_bounds: &LabSize) {
@@ -144,9 +199,9 @@ fn display_grid(guard: &Guard, lab: &LabGrid, lab_bounds: &LabSize) {
         let row = (row_ind * lab_bounds.col_max..(row_ind + 1) * lab_bounds.col_max)
             .map(|raw_ind| grid[raw_ind])
             .join(" ");
-        println!("{}", row)
+        // println!("{}", row)
     });
-    println!("")
+    // println!("")
 }
 
 fn get_next_obst<'a>(lab: &'a LabGrid, guard: &Guard) -> Option<&'a Coord<'a>> {
@@ -199,31 +254,21 @@ pub fn part_two(input: &str) -> Option<u64> {
     let bounds = get_lab_dimensions(input);
     let (mut original_lab, original_guard) = parse_input(input, &bounds);
     let original_guard_loc: (usize, usize) = original_guard.location.clone().into();
-    let potential_object_locations: Vec<(usize, usize)> =
-        get_finite_path_information(original_guard.clone(), &original_lab, false)
-            .into_keys()
-            // filter out the guard's starting location, since we cannot put an object there
-            // due to paradoxes
-            .filter(|&loc| loc != original_guard_loc)
-            .collect();
-    let object_locations = potential_object_locations
-        .into_iter()
-        .filter(|loc| {
-            // create a new guard for this timeline
-            let guard = original_guard.clone();
-            let new_obst = Coord {
-                row: loc.0,
-                col: loc.1,
-                bounds: &bounds,
-            };
-            // now we need to calculate the path, returning true if we detect a loop
-            // and false if the guard exits the lab before a loop is detected
-            with_inserted_obstacle(&mut original_lab, new_obst, |lab| {
-                check_for_path_loop(guard, lab)
-            })
+    // this gives us an ordered list of all possible locations for an object
+    // as well as the initial state for the guard to pick up the simulation from
+    let original_guard_path = get_path(original_guard, &original_lab);
+    // now we iterate through, ignoring the first location
+    // since we cannot just drop an object on the guard's head
+    let output = (1..original_guard_path.len())
+        .filter(|&obst_ind| {
+            with_inserted_obstacle(
+                &mut original_lab,
+                original_guard_path[obst_ind].location.clone(),
+                |lab| check_for_path_loop(original_guard_path[obst_ind - 1].clone().into(), lab),
+            )
         })
         .count();
-    Some(object_locations as u64)
+    Some(output as u64)
 }
 
 #[derive(Debug, PartialEq)]
@@ -537,7 +582,7 @@ fn check_for_path_loop(mut guard: Guard<'_>, lab: &LabGrid<'_>) -> bool {
             }
             // the guard has left the valid bounds before a loop has been detected
             Err(_) => {
-                println!("Guard has left the area!");
+                // println!("Guard has left the area!");
                 return false;
             }
         };
@@ -555,7 +600,7 @@ fn check_for_path_loop(mut guard: Guard<'_>, lab: &LabGrid<'_>) -> bool {
                 // if we have been to this location before, and faced that direction,
                 // then our next steps must be the same, because the guard is deterministic
                 // therefore we are in a loop
-                println!("Loop detected!");
+                // println!("Loop detected!");
                 return true;
             }
         }
