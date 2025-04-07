@@ -199,9 +199,9 @@ fn display_grid(guard: &Guard, lab: &LabGrid, lab_bounds: &LabSize) {
         let row = (row_ind * lab_bounds.col_max..(row_ind + 1) * lab_bounds.col_max)
             .map(|raw_ind| grid[raw_ind])
             .join(" ");
-        // println!("{}", row)
+        println!("{}", row)
     });
-    // println!("")
+    println!("")
 }
 
 fn get_next_obst<'a>(lab: &'a LabGrid, guard: &Guard) -> Option<&'a Coord<'a>> {
@@ -253,7 +253,6 @@ pub fn part_two(input: &str) -> Option<u64> {
     // TODO: make this more performant
     let bounds = get_lab_dimensions(input);
     let (mut original_lab, original_guard) = parse_input(input, &bounds);
-    let original_guard_loc: (usize, usize) = original_guard.location.clone().into();
     // this gives us an ordered list of all possible locations for an object
     // as well as the initial state for the guard to pick up the simulation from
     let original_guard_path = get_path(original_guard, &original_lab);
