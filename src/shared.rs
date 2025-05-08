@@ -23,7 +23,7 @@ pub fn parse_number_from_str(target: &str) -> Result<u64, String> {
         .enumerate()
         .map(|(ind, ch)| match match_numeric(ch) {
             Some(num) => Ok(num * 10u64.pow((chars_max_ind - ind).try_into().unwrap())),
-            None => return Err("Invalid numeric char in target".to_string()),
+            None => Err("Invalid numeric char in target".to_string()),
         })
         .collect::<Result<Vec<u64>, String>>()?;
     Ok(nums.into_iter().sum())
