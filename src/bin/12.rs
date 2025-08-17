@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::AddAssign};
 
-use advent_of_code::shared::{CardinalCoord, CardinalDirection, CardinalShift, Grid, GridBounds, RawIndex};
+use advent_of_code::shared::{
+    CardinalCoord, CardinalDirection, CardinalShift, Grid, GridBounds, RawIndex,
+};
 
 advent_of_code::solution!(12);
 
@@ -12,42 +14,46 @@ pub fn part_one(input: &str) -> Option<u64> {
 
     let crops_collected = count_external_faces(&grid_of_crops, &bounds)
         // count each id into area and the number of external faces into perimeter
-        .fold(HashMap::<usize, (u64, u64)>::new(), |mut acc, (id, perimeter_add)| {
-            let (prev_area, prev_perimeter) = acc.entry(id)
-                .or_default();
-            *prev_area += 1;
-            *prev_perimeter += perimeter_add;
-            acc
-        });
+        .fold(
+            HashMap::<usize, (u64, u64)>::new(),
+            |mut acc, (id, perimeter_add)| {
+                // using entry gives us the mutable references to the values, initalising as 0 if needed
+                let (prev_area, prev_perimeter) = acc.entry(id).or_default();
+                // equivalent of +=, but works on mut ref
+                prev_area.add_assign(1);
+                prev_perimeter.add_assign(perimeter_add);
+                // then return the hashmap for the next iteration
+                acc
+            },
+        );
 
-    let answer = crops_collected.into_iter()
-        .map(|(id, (area, perimeter))| {
-            let score = area * perimeter;
-            if DEBUG {
-                println!("id {}: area of {}, perimeter of {}, total score {}",
-                    id,
-                    area,
-                    perimeter,
-                    score
-                );
-            }
-            score
-        })
+    let answer = crops_collected
+        .into_iter()
+        .map(|(_, (area, perimeter))| area * perimeter)
         .sum();
 
     Some(answer)
 }
 
-fn count_external_faces<'a>(grid_of_crops: &Grid<'_, usize>, bounds: &'a GridBounds) -> impl Iterator<Item = (usize, u64)> {
-    grid_of_crops.iter()
+/// Iterates over the grid and counts the number of external faces for each crop
+fn count_external_faces<'a>(
+    grid_of_crops: &Grid<'_, usize>,
+    bounds: &'a GridBounds,
+) -> impl Iterator<Item = (usize, u64)> {
+    grid_of_crops
+        .iter()
         .enumerate()
         // convert our raw_index from enumerate into a coordinate
         .map(move |(raw_index, &id)| {
-            (CardinalCoord::from_raw_ind(raw_index, &bounds).expect("must be in range"), id)
+            (
+                CardinalCoord::from_raw_ind(raw_index, &bounds).expect("must be in range"),
+                id,
+            )
         })
         // add in the number of external faces for each tile
         .map(|(coord, id)| {
-            let external_faces = grid_of_crops.get_map_neighbors_from_coord(coord)
+            let external_faces = grid_of_crops
+                .get_map_neighbors_from_coord(coord)
                 .iter()
                 .filter(|&contents| {
                     // don't forget that the edges of the grid are None,
@@ -62,113 +68,156 @@ fn count_external_faces<'a>(grid_of_crops: &Grid<'_, usize>, bounds: &'a GridBou
 pub fn part_two(input: &str) -> Option<u64> {
     let bounds = GridBounds::from_input(input);
     let crops = assign_unique_ids_to_crops_and_return_grid(input, &bounds);
-    let max_id = crops.iter()
+    let max_id = crops
+        .iter()
         .max()
         .copied()
         .expect("Will already have panicked if input is empty");
 
-    let external_faces_per_shape = crops.iter()
-        .enumerate()
-        .map(|(raw_index, id)| {
-            let coord = CardinalCoord::from_raw_ind(raw_index, &bounds)
-                .expect("came from in bounds, so must be in bounds");
+    let external_faces_per_shape = crops
+        .grid_point_iter()
+        .map(|grid_point| {
+            let coord = grid_point.loc;
+            let id = grid_point.point;
+            (coord, id)
+        })
+        .map(|(coord, id)| {
+            let external_faces = get_sides_bitmask(&crops, coord, id);
             let vec_ind = id - 1;
-            (coord, vec_ind)
+            (
+                vec_ind,
+                ShapePoint {
+                    coord,
+                    external_faces,
+                },
+            )
         })
-        .map(|(coord, vec_ind)| {
-            let external_faces = CardinalDirection::ALL
-                .into_iter()
-                .flat_map(|dir| {
-                    let new_coord = match coord.shift(dir) {
-                        Some(coord) => coord,
-                        None => return Some(direction_to_key(dir))
-                    };
-                    if let Some(id) = crops.get_from_coord(new_coord) {
-                        if id - 1 != vec_ind {
-                            return Some(direction_to_key(dir))
-                        }
-                    }
-                    return None
-                })
-                .fold(0, |acc, next| acc | next);
-            (vec_ind, ShapePoint { coord, external_faces })
-        })
-        .fold(vec![Vec::<ShapePoint>::new(); max_id],
+        // initialise our vec and then slot all the shape points into it
+        .fold(
+            vec![Vec::<ShapePoint>::new(); max_id],
             |mut acc, (vec_ind, shape_point)| {
                 acc[vec_ind].push(shape_point);
                 acc
-            }
+            },
         );
 
-    let score = external_faces_per_shape.into_iter()
-        .map(|mut shape_vec| {
-            // because shape_vec is mutable, we have to be careful with references
-            // make a counter for the number of sides we have seen
-            let mut side_counter = 0;
-            // make a quick lookup for if a coordinate is in the shape
-            let in_shape: HashMap<CardinalCoord, usize> = shape_vec.iter()
-                .enumerate()
-                .map(|(ind, shape_point)| (shape_point.coord, ind))
-                .collect();
-            // now work our way through each point in the shape, and count all sides it is part of
-            for point_ind in 0 .. shape_vec.len() {
-                let point_coord = shape_vec[point_ind].coord;
-                let point_external_faces = shape_vec[point_ind].external_faces;
-                if shape_vec[point_ind].external_faces & KEY_BITMASK != 0 {
-                    // it has external sides that we have not looked at yet
-                    for (dir, key) in CardinalDirection::ALL.map(|dir| (dir, direction_to_key(dir))) {
-                        if point_external_faces & key != 0 {
-                            // we have a side in this direction
-                            side_counter += 1;
-                            // then we need to remove all the parts of this side length
-                            let left_dir = dir.turn_anti_clockwise();
-                            let right_dir = dir.turn_clockwise();
-                            // first left
-                            let mut pointer_coord = Some(point_coord);
-                            while let Some(coord) = pointer_coord.take() {
-                                // make sure that the next coordinate we check is in bounds
-                                let Some(next_coord) = coord.shift(left_dir) else { break };
+    let score = external_faces_per_shape
+        .into_iter()
+        .map(shape_vec_to_score)
+        .sum();
 
-                                // make sure that the next coordinate we check is contained within this shape
-                                let Some(&shape_vec_ind) = in_shape.get(&next_coord) else { break };
+    Some(score)
+}
 
-                                // ensure next point does continues the side
-                                let next_ext_faces = shape_vec[shape_vec_ind].external_faces;
-                                if next_ext_faces & key == 0 { break }
-                                
-                                // set pointer and then unset the current point
-                                pointer_coord = Some(next_coord);
-                                shape_vec[shape_vec_ind].external_faces &= !key;
-                            }
-                            // then right
-                            let mut pointer_coord = Some(point_coord);
-                            while let Some(coord) = pointer_coord.take() {
-                                // make sure that the next coordinate we check is in bounds
-                                let Some(next_coord) = coord.shift(right_dir) else { break };
-
-                                // make sure that the next coordinate we check is contained within this shape
-                                let Some(&shape_vec_ind) = in_shape.get(&next_coord) else { break };
-
-                                // ensure next point does continues the side
-                                let next_ext_faces = shape_vec[shape_vec_ind].external_faces;
-                                if next_ext_faces & key == 0 { break }
-                                
-                                // set pointer and then unset the current point
-                                pointer_coord = Some(next_coord);
-                                shape_vec[shape_vec_ind].external_faces &= !key;
-                            }
-                            // then finally our starting coord
-                            shape_vec[point_ind].external_faces &= !key;
-                        }
+/// Returns a bitmask of the sides that are external to the crop at the given coordinate
+fn get_sides_bitmask(crops: &Grid<'_, usize>, coord: CardinalCoord<'_>, crop_id: usize) -> u64 {
+    CardinalDirection::ALL
+        .into_iter()
+        .flat_map(|dir| {
+            let next_coord = coord.shift(dir);
+            if next_coord.is_none() {
+                // if it is a grid boundary, this direction is an external face
+                // therefore part of a side
+                return Some(direction_to_key(dir));
+            }
+            next_coord
+                // we know it is some valid coord, so this will map to a crop id
+                .and_then(|coord| crops.get_from_coord(coord))
+                // which we can then compare to our current crop id
+                .and_then(|&other_id| {
+                    if other_id != crop_id {
+                        // if it is not the same crop id, then this is an external face
+                        Some(direction_to_key(dir))
+                    } else {
+                        None
                     }
+                })
+        })
+        // then we can fold our bits into a bitmask and return
+        .fold(0, |acc, next| acc | next)
+}
+
+/// Converts a vector of shape points into a score based on the number of sides and area
+fn shape_vec_to_score(mut shape_vec: Vec<ShapePoint<'_>>) -> u64 {
+    // make a counter for the number of sides we have seen
+    let mut side_counter = 0;
+    // make a quick lookup for (coordinate in the shape) -> vec index
+    let in_shape: HashMap<CardinalCoord, usize> = shape_vec
+        .iter()
+        .enumerate()
+        .map(|(ind, shape_point)| (shape_point.coord, ind))
+        .collect();
+    // now work our way through each point in the shape, and count all sides it is part of
+    for point_ind in 0..shape_vec.len() {
+        // because shape_vec is mutable, we have to be careful with references
+        let point_coord = shape_vec[point_ind].coord;
+        let point_external_faces = shape_vec[point_ind].external_faces;
+        if shape_vec[point_ind].external_faces & KEY_BITMASK != 0 {
+            // it has external sides that we have not looked at yet
+            for (dir, key) in DIR_KEY_PAIRS {
+                if point_external_faces & key != 0 {
+                    // we have a side in this direction
+                    side_counter += 1;
+                    // then we need to remove all the parts of this side
+                    remove_side(&mut shape_vec, &in_shape, point_ind, point_coord, dir, key);
                 }
             }
-            // score is number of sides * area
-            side_counter * shape_vec.len() as u64
-        })
-        .sum();
-        
-    Some(score)
+        }
+    }
+    // score is number of sides * area
+    side_counter * shape_vec.len() as u64
+}
+
+/// Removes the side of a shape in the given direction, starting from the point at point_ind
+fn remove_side(
+    shape_vec: &mut Vec<ShapePoint<'_>>,
+    in_shape: &HashMap<CardinalCoord<'_>, usize>,
+    point_ind: usize,
+    point_coord: CardinalCoord<'_>,
+    dir: CardinalDirection,
+    key: u64,
+) {
+    let left_dir = dir.turn_anti_clockwise();
+    let right_dir = dir.turn_clockwise();
+    // first left
+    remove_line_in_direction(shape_vec, in_shape, point_coord, key, left_dir);
+    // then right
+    remove_line_in_direction(shape_vec, in_shape, point_coord, key, right_dir);
+    // then finally our starting coord
+    shape_vec[point_ind].external_faces &= !key;
+}
+
+/// Removes the line in the given direction from the shape vector, starting from the point_coord.
+/// Useful helper function to avoid code duplication.
+fn remove_line_in_direction(
+    shape_vec: &mut Vec<ShapePoint<'_>>,
+    in_shape: &HashMap<CardinalCoord<'_>, usize>,
+    point_coord: CardinalCoord<'_>,
+    key: u64,
+    dir: CardinalDirection,
+) {
+    let mut pointer_coord = Some(point_coord);
+    while let Some(coord) = pointer_coord.take() {
+        // make sure that the next coordinate we check is in bounds
+        let Some(next_coord) = coord.shift(dir) else {
+            break;
+        };
+
+        // make sure that the next coordinate we check is contained within this shape
+        let Some(&shape_vec_ind) = in_shape.get(&next_coord) else {
+            break;
+        };
+
+        // ensure next point does continues the side
+        let next_ext_faces = shape_vec[shape_vec_ind].external_faces;
+        if next_ext_faces & key == 0 {
+            break;
+        }
+
+        // set pointer and then unset the current point
+        pointer_coord = Some(next_coord);
+        shape_vec[shape_vec_ind].external_faces &= !key;
+    }
 }
 
 const fn direction_to_key(direction: CardinalDirection) -> u64 {
@@ -181,55 +230,72 @@ const fn direction_to_key(direction: CardinalDirection) -> u64 {
     }
 }
 
-const KEY_BITMASK: u64 = 1 << 63 | 1 << 62 | 1 << 61 | 1 << 60; 
+const KEY_BITMASK: u64 = 1 << 63 | 1 << 62 | 1 << 61 | 1 << 60;
+
+const DIR_KEY_PAIRS: [(CardinalDirection, u64); 4] = {
+    let mut init = [(CardinalDirection::Up, 0); 4];
+    let mut i = 0;
+    while i < 4 {
+        let dir = CardinalDirection::ALL[i];
+        init[i] = (dir, direction_to_key(dir));
+        i += 1;
+    }
+    init
+};
 
 #[derive(Debug, Clone, Copy)]
 struct ShapePoint<'a> {
     coord: CardinalCoord<'a>,
-    external_faces: u64
+    external_faces: u64,
 }
 
 fn parse_input(input: &str) -> Vec<char> {
-    input.lines()
-        .flat_map(|line| line.chars())
-        .collect()
+    input.lines().flat_map(|line| line.chars()).collect()
 }
 
-fn assign_unique_ids_to_crops_and_return_grid<'a>(input: &str, bounds: &'a GridBounds) -> Grid<'a, usize> {
+/// Assigns unique IDs to each crop in the grid and returns a new grid with these IDs.
+/// Almost a map of crops as chars to crops as usize IDs.
+fn assign_unique_ids_to_crops_and_return_grid<'a>(
+    input: &str,
+    bounds: &'a GridBounds,
+) -> Grid<'a, usize> {
     let mut counter = 0;
     let initial_grid = Grid::new(parse_input(input), &bounds);
     let mut with_unique_ids = Grid::new(vec![0_usize; bounds.max_col * bounds.max_row], &bounds);
-    for (raw_ind, &current_char) in initial_grid.iter().enumerate() {
-        let current_coord = CardinalCoord::from_raw_ind(raw_ind, &bounds)
-            .expect("must be valid coord");
-        let current_id = with_unique_ids.get_from_coord(current_coord)
+    for grid_point in initial_grid.grid_point_iter() {
+        let current_coord: CardinalCoord = grid_point.loc;
+        let current_char = grid_point.point;
+        let current_id = with_unique_ids
+            .get_from_coord(current_coord)
             .copied()
             .expect("coordinate is in range");
         if current_id == 0 {
             // we have not set this square before, therefore we must be seeing a new char
             counter += 1;
             // find all the positions we need to update
+            // side note: would be slightly more efficient to use a HashSet here, but we need ordered iteration
             let mut crop_queue = vec![current_coord];
             let mut queue_pointer = 0;
             while queue_pointer < crop_queue.len() {
                 let coord_to_check = crop_queue[queue_pointer];
                 let new_neighbors = initial_grid.get_map_neighbors_from_coord(coord_to_check);
-                let matching_neighbors = new_neighbors.iter()
+                let matching_neighbors = new_neighbors
+                    .iter()
+                    // filter down to only those of the same crop type
                     .filter_map(|inner| {
-                        inner.map(|(coord, &n_char)| {
-                            if current_char == n_char {
-                                Some(coord)
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten()
-                    });
-                for new_coord in matching_neighbors {
-                    if !crop_queue.contains(&new_coord) {
-                        crop_queue.push(new_coord);
-                    }
-                }
+                        if inner.is_some_and(|(_, &n_char)| current_char == n_char) {
+                            inner.map(|(coord, _)| coord)
+                        } else {
+                            None
+                        }
+                    })
+                    // filter out any we have found already
+                    .filter(|neighbour| !crop_queue.contains(neighbour))
+                    // collect into a vector to release the borrow of crop_queue
+                    .collect::<Vec<_>>();
+                // then add all to the queue
+                crop_queue.extend(matching_neighbors);
+                // and increment the pointer
                 queue_pointer += 1;
             }
             // now we can update them all
@@ -238,17 +304,22 @@ fn assign_unique_ids_to_crops_and_return_grid<'a>(input: &str, bounds: &'a GridB
             }
             if DEBUG {
                 // print the changes for debugging
-                for ind in 0 .. 10 {
+                for ind in 0..10 {
                     let lower = ind * 10;
                     let upper = (ind + 1) * 10;
-                    println!("{:?}", with_unique_ids.contents.get(lower .. upper).expect("afobsgoiubdsg"));
+                    println!(
+                        "{:?}",
+                        with_unique_ids
+                            .contents
+                            .get(lower..upper)
+                            .expect("afobsgoiubdsg")
+                    );
                     if ind == 9 {
                         println!();
                     }
                 }
             }
         }
-        
     }
     with_unique_ids
 }
