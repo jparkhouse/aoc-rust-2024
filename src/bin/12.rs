@@ -1,4 +1,7 @@
-use std::{collections::HashMap, ops::AddAssign};
+use std::{
+    collections::HashMap,
+    ops::{AddAssign, BitOr},
+};
 
 use advent_of_code::shared::{
     CardinalCoord, CardinalDirection, CardinalShift, Grid, GridBounds, RawIndex,
@@ -134,7 +137,7 @@ fn get_sides_bitmask(crops: &Grid<'_, usize>, coord: CardinalCoord<'_>, crop_id:
                 })
         })
         // then we can fold our bits into a bitmask and return
-        .fold(0, |acc, next| acc | next)
+        .fold(0, |acc, next| acc.bitor(next))
 }
 
 /// Converts a vector of shape points into a score based on the number of sides and area
