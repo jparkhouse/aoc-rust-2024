@@ -137,7 +137,7 @@ fn get_sides_bitmask(crops: &Grid<'_, usize>, coord: CardinalCoord<'_>, crop_id:
                 })
         })
         // then we can fold our bits into a bitmask and return
-        .fold(0, |acc, next| acc.bitor(next))
+        .fold(0, |acc, next| BitOr::bitor(acc, next))
 }
 
 /// Converts a vector of shape points into a score based on the number of sides and area
