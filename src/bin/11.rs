@@ -76,7 +76,7 @@ enum StoneOutput {
 }
 
 /// Takes in the input format and returns a Vec of Stones.
-/// For example `0 1 2` would return `vec![ Stone { num: 0 }, Stone { num: 1 }, Stone { num: 2 }]`
+/// For example `0 1 2` would return `vec![ Stone { num: 0 }, Stone { num: 1 }, Stone { num: 2 } ]`
 fn parse_input_to_stones(input: &str) -> Vec<Stone> {
     let row = input.split(" ")
         .map(|num_str| {

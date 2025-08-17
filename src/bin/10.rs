@@ -2,7 +2,7 @@ advent_of_code::solution!(10);
 
 use std::collections::HashSet;
 
-use crate::coord::Coord;
+use advent_of_code::shared::{CardinalCoord as Coord, GridBounds, RawIndex};
 
 const ALL_HEIGHTS: [Height; 10] = {
     use Height::*;
@@ -21,10 +21,10 @@ const ALL_HEIGHTS: [Height; 10] = {
 };
 
 pub fn part_one(input: &str) -> Option<u64> {
-    let bounds = get_map_bounds_from_input(input);
+    let bounds = GridBounds::from_input(input);
     let map = parse_input_to_map(input, &bounds);
 
-    let trail_heads = map.find_trail_heads();
+    let trail_heads = find_trail_heads(&map);
     let mut all_paths: Option<Vec<HashSet<MapPoint>>> = None;
     // since we start at Zero, we need to skip 1 and start our search from One
     for height in ALL_HEIGHTS.iter().skip(1) {
@@ -86,17 +86,17 @@ pub fn part_one(input: &str) -> Option<u64> {
 
 fn find_valid_paths<'a>(map: &'a Map, target_height: &Height, mp: MapPoint<'a>) -> Vec<MapPoint<'a>> {
     // for each point from the original trail head, we need to get its neighbours
-    let possible_paths = map.get_neighbours(mp.loc);
+    let possible_paths = map.get_map_neighbors_from_coord(mp.loc);
     // maximum possible paths are 3 (since we must have come from one of them)
     // unless we are starting at a trail head
     let mut output = Vec::with_capacity(4);
-    for path in [possible_paths.up, possible_paths.down, possible_paths.left, possible_paths.right] {
+    for path in possible_paths.iter() {
         // if it is a valid path, i.e. does not leave the grid
         if let Some(new_mp) = path {
             // and it is exactly one step up in height (from the original iterator)
-            if new_mp.height == target_height {
+            if *new_mp.1 == *target_height {
                 // add it to the output
-                output.push(new_mp);
+                output.push(MapPoint::from(new_mp.0,*new_mp.1));
             }
         }
     }
@@ -107,10 +107,10 @@ fn find_valid_paths<'a>(map: &'a Map, target_height: &Height, mp: MapPoint<'a>) 
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
-    let bounds = get_map_bounds_from_input(input);
+    let bounds = GridBounds::from_input(input);
     let map = parse_input_to_map(input, &bounds);
 
-    let trail_heads = map.find_trail_heads();
+    let trail_heads = find_trail_heads(&map);
     let mut all_paths: Option<Vec<Vec<MapPoint>>> = None;
     // since we start at Zero, we need to skip 1 and start our search from One
     for height in ALL_HEIGHTS.iter().skip(1) {
@@ -168,18 +168,11 @@ pub fn part_two(input: &str) -> Option<u64> {
     Some(scores.into_iter().sum())
 }
 
-fn get_map_bounds_from_input(input: &str) -> GridBounds {
-    let lines: Vec<&str> = input.lines().collect();
-    let max_col = lines[0].len();
-    let max_row = lines.len();
-    GridBounds { max_row, max_col }
-}
-
 fn parse_input_to_map<'a>(input: &str, grid_bounds: &'a GridBounds) -> Map<'a> {
     let grid: Vec<Height> = input.lines()
         .flat_map(|line| line.chars().map(|ch| char_to_height(ch)))
         .collect();
-    Map { grid, grid_bounds }
+    Map { contents: grid, grid_bounds }
 } 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -213,260 +206,26 @@ fn char_to_height(ch: char) -> Height {
     }
 }
 
-struct Map<'a> {
-    grid: Vec<Height>,
-    grid_bounds: &'a GridBounds
-}
+type Map<'a> = advent_of_code::shared::Grid<'a, Height>;
+type MapPoint<'a> = advent_of_code::shared::GridPoint<'a, Coord<'a>, Height>;
 
-impl<'a> Map<'a> {
 
-    /// Takes in a coordinate and returns a MapNeighbours struct containing
-    /// optional `MapPoint`s, which can be used to check that point's height.
-    /// Here, None represents leaving the grid's bounds, so top left corner
-    /// would return `Some(...)` for `self.right` and `self.down`, and
-    /// `None` otherwise
-    pub fn get_neighbours(&'a self, coord: Coord<'a>) -> MapNeighbours<'a> {
-        use Direction::*;
-        let coords_to_check = [
-            coord.shift(Up),
-            coord.shift(Down),
-            coord.shift(Left),
-            coord.shift(Right),
-        ];
-
-        MapNeighbours {
-            up: self.opt_coord_to_opt_map_point(coords_to_check[0]),
-            down: self.opt_coord_to_opt_map_point(coords_to_check[1]),
-            left: self.opt_coord_to_opt_map_point(coords_to_check[2]),
-            right: self.opt_coord_to_opt_map_point(coords_to_check[3]),
-        }
-    }
-
-    /// Filters the grid to return a `Vec` of `MapPoint`s for all locations in the grid
-    /// where the height is `Zero`, defined as a trail head in the problem
-    pub fn find_trail_heads(&'a self) -> Vec<MapPoint<'a>> {
-        self.grid.iter().enumerate().filter(|(_, height)| {
-            **height == Height::Zero
-        }).map(|(ind, height)| {
-            let loc = Coord::from_raw_ind(ind, self.grid_bounds);
-            MapPoint {
-                loc, height
-            }
-        }).collect()
-    }
-    
-    fn opt_coord_to_opt_map_point(&'a self, x: Option<Coord<'a>>) -> Option<MapPoint<'a>> {
-        x.map(|loc| self.coord_to_map_point(loc))
-    }
-
-    /// Uses the map to turn a `Coord` into a `MapPoint` by enriching it with a reference
-    /// to the height at that location. Assumes that the `Coord` is within the bounds of
-    /// the map, otherwise panics
-    pub fn coord_to_map_point(&'a self, loc: Coord<'a>) -> MapPoint<'a> {
-        let height = self.grid.get(loc.to_raw_ind())
-            .expect("coord should not leave bounds of grid");
-        MapPoint { loc, height }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct MapPoint<'a> {
-    loc: Coord<'a>,
-    height: &'a Height
-}
-
-struct MapNeighbours<'a> {
-    up: Option<MapPoint<'a>>,
-    down: Option<MapPoint<'a>>,
-    left: Option<MapPoint<'a>>,
-    right: Option<MapPoint<'a>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct GridBounds {
-    pub max_row: usize,
-    pub max_col: usize,
-}
-
-mod coord {
-    use crate::{Direction, GridBounds};
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Coord<'a> {
-        row: usize,
-        col: usize,
-        grid_bounds: &'a GridBounds
-    }
-
-    impl<'a> Coord<'a> {
-        fn shift_left(self) -> Option<Self> {
-            if self.col > 0 {
-                Some(Self {
-                    row: self.row,
-                    col: self.col - 1,
-                    grid_bounds: self.grid_bounds
+/// Filters the grid to return a `Vec` of `MapPoint`s for all locations in the grid
+/// where the height is `Zero`, defined as a trail head in the problem
+fn find_trail_heads<'gb>(map: &'gb Map<'gb>) -> Vec<MapPoint<'gb>> {
+    map.iter()
+        .enumerate()
+        .filter_map(|(ind, &height)| {
+            (height == Height::Zero)
+                .then(|| {
+                        MapPoint::from(
+                            Coord::from_raw_ind(ind, map.grid_bounds)
+                            .expect("usize from iter enumerate must be in range"), 
+                            height
+                        )
                 })
-            } else {
-                None
-            }
-        }
-
-        fn shift_right(self) -> Option<Self> {
-            if self.col < self.grid_bounds.max_col - 1 {
-                Some(Self {
-                    row: self.row,
-                    col: self.col + 1,
-                    grid_bounds: self.grid_bounds
-                })
-            } else {
-                None
-            }
-        }
-
-        fn shift_up(self) -> Option<Self> {
-            if self.row > 0 {
-                Some(Self {
-                    row: self.row - 1,
-                    col: self.col,
-                    grid_bounds: self.grid_bounds
-                })
-            } else {
-                None
-            }
-        }
-
-        fn shift_down(self) -> Option<Self> {
-            if self.row < self.grid_bounds.max_row - 1 {
-                Some(Self {
-                    row: self.row + 1,
-                    col: self.col,
-                    grid_bounds: self.grid_bounds
-                })
-            } else {
-                None
-            }
-        }
-
-        /// Shifts the coordinate 1 step in the given direction.
-        /// Returns an option where None represents leaving the bounds of the grid.
-        pub fn shift(self, dir: Direction) -> Option<Self> {
-            use Direction::*;
-            match dir {
-                Left => self.shift_left(),
-                Right => self.shift_right(),
-                Up => self.shift_up(),
-                Down => self.shift_down(),
-            }
-        }
-
-        /// Uses grid_bounds to convert a usize into a coord
-        pub fn from_raw_ind(raw_ind: usize, grid_bounds: &'a GridBounds) -> Self {
-            let row_len = grid_bounds.max_col;
-            Self {
-                row: raw_ind / row_len,
-                col: raw_ind % row_len,
-                grid_bounds
-            }
-        }
-
-        /// Returns coord to usize for indexing
-        pub fn to_raw_ind(&self) -> usize {
-            let row_len = self.grid_bounds.max_col;
-            self.row * row_len + self.col
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_from_raw_ind() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 4 };
-            let coord = Coord::from_raw_ind(6, &grid_bounds);
-            assert_eq!(coord.row, 1);
-            assert_eq!(coord.col, 2);
-        }
-
-        #[test]
-        fn test_to_raw_ind() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 4 };
-            let coord = Coord { row: 1, col: 2, grid_bounds: &grid_bounds };
-            assert_eq!(coord.to_raw_ind(), 6);
-        }
-
-        #[test]
-        fn test_shift_left() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Left);
-            assert_eq!(shifted, Some(Coord { row: 2, col: 1, grid_bounds: &grid_bounds }));
-        }
-    
-        #[test]
-        fn test_shift_right() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Right);
-            assert_eq!(shifted, Some(Coord { row: 2, col: 3, grid_bounds: &grid_bounds }));
-        }
-    
-        #[test]
-        fn test_shift_up() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Up);
-            assert_eq!(shifted, Some(Coord { row: 1, col: 2, grid_bounds: &grid_bounds }));
-        }
-    
-        #[test]
-        fn test_shift_down() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Down);
-            assert_eq!(shifted, Some(Coord { row: 3, col: 2, grid_bounds: &grid_bounds }));
-        }
-    
-        #[test]
-        fn test_shift_left_out_of_bounds() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 0, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Left);
-            assert_eq!(shifted, None);
-        }
-    
-        #[test]
-        fn test_shift_right_out_of_bounds() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 2, col: 4, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Right);
-            assert_eq!(shifted, None);
-        }
-    
-        #[test]
-        fn test_shift_up_out_of_bounds() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 0, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Up);
-            assert_eq!(shifted, None);
-        }
-    
-        #[test]
-        fn test_shift_down_out_of_bounds() {
-            let grid_bounds = GridBounds { max_row: 5, max_col: 5 };
-            let coord = Coord { row: 4, col: 2, grid_bounds: &grid_bounds };
-            let shifted = coord.shift(Direction::Down);
-            assert_eq!(shifted, None);
-        }
-    }
-}
-
-
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right
+        })
+        .collect()
 }
 
 #[cfg(test)]
