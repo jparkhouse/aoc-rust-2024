@@ -155,7 +155,7 @@ fn shape_vec_to_score(mut shape_vec: Vec<ShapePoint<'_>>) -> u64 {
         // because shape_vec is mutable, we have to be careful with references
         let point_coord = shape_vec[point_ind].coord;
         let point_external_faces = shape_vec[point_ind].external_faces;
-        if shape_vec[point_ind].external_faces & KEY_BITMASK != 0 {
+        if point_external_faces & KEY_BITMASK != 0 {
             // it has external sides that we have not looked at yet
             for (dir, key) in DIR_KEY_PAIRS {
                 if point_external_faces & key != 0 {
@@ -174,7 +174,7 @@ fn shape_vec_to_score(mut shape_vec: Vec<ShapePoint<'_>>) -> u64 {
 /// Removes the side of a shape in the given direction, starting from the point at point_ind
 fn remove_side(
     shape_vec: &mut Vec<ShapePoint<'_>>,
-    in_shape: &HashMap<CardinalCoord<'_>, usize>,
+    shape_vec_map: &HashMap<CardinalCoord<'_>, usize>,
     point_ind: usize,
     point_coord: CardinalCoord<'_>,
     dir: CardinalDirection,
@@ -183,9 +183,9 @@ fn remove_side(
     let left_dir = dir.turn_anti_clockwise();
     let right_dir = dir.turn_clockwise();
     // first left
-    remove_line_in_direction(shape_vec, in_shape, point_coord, key, left_dir);
+    remove_line_in_direction(shape_vec, shape_vec_map, point_coord, key, left_dir);
     // then right
-    remove_line_in_direction(shape_vec, in_shape, point_coord, key, right_dir);
+    remove_line_in_direction(shape_vec, shape_vec_map, point_coord, key, right_dir);
     // then finally our starting coord
     shape_vec[point_ind].external_faces &= !key;
 }
@@ -194,20 +194,15 @@ fn remove_side(
 /// Useful helper function to avoid code duplication.
 fn remove_line_in_direction(
     shape_vec: &mut Vec<ShapePoint<'_>>,
-    in_shape: &HashMap<CardinalCoord<'_>, usize>,
-    point_coord: CardinalCoord<'_>,
+    shape_vec_map: &HashMap<CardinalCoord<'_>, usize>,
+    starting_position: CardinalCoord<'_>,
     key: u64,
     dir: CardinalDirection,
 ) {
-    let mut pointer_coord = Some(point_coord);
-    while let Some(coord) = pointer_coord.take() {
-        // make sure that the next coordinate we check is in bounds
-        let Some(next_coord) = coord.shift(dir) else {
-            break;
-        };
-
+    let mut pointer_coord = starting_position;
+    while let Some(next_coord) = pointer_coord.shift(dir) {
         // make sure that the next coordinate we check is contained within this shape
-        let Some(&shape_vec_ind) = in_shape.get(&next_coord) else {
+        let Some(&shape_vec_ind) = shape_vec_map.get(&next_coord) else {
             break;
         };
 
