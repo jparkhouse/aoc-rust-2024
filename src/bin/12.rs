@@ -213,7 +213,7 @@ fn remove_line_in_direction(
         }
 
         // set pointer and then unset the current point
-        pointer_coord = Some(next_coord);
+        pointer_coord = next_coord;
         shape_vec[shape_vec_ind].external_faces &= !key;
     }
 }
