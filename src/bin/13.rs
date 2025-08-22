@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_rational::Ratio;
+use num_rational::Rational64;
 use num_traits::ops::checked::{CheckedMul, CheckedSub};
 
 advent_of_code::solution!(13);
@@ -23,7 +23,7 @@ pub fn part_one(input: &str) -> Option<u64> {
 }
 
 pub fn part_two(input: &str) -> Option<u64> {
-    let offset = Ratio::from(OFFSET);
+    let offset = Rational64::from(OFFSET);
     let tokens_spent = parse_input(input)
         .map(|(matrix, mut solutions)| {
             solutions.0 += offset;
@@ -38,10 +38,10 @@ pub fn part_two(input: &str) -> Option<u64> {
 }
 
 fn calculate_solutions(
-    matrix: [Ratio<i64>; 4],
-    solutions: (Ratio<i64>, Ratio<i64>),
+    matrix: [Rational64; 4],
+    solutions: (Rational64, Rational64),
 ) -> Option<(u64, u64)> {
-    let zero = Ratio::from(0);
+    let zero = Rational64::from(0);
     // returns None if det is 0
     let inv_det = get_inv_det(matrix)?;
     let pre_x = calculate_pre_x_factor(matrix, solutions);
@@ -57,9 +57,9 @@ fn calculate_solutions(
 }
 
 fn calculate_pre_x_factor(
-    matrix: [Ratio<i64>; 4],
-    solutions: (Ratio<i64>, Ratio<i64>),
-) -> Ratio<i64> {
+    matrix: [Rational64; 4],
+    solutions: (Rational64, Rational64),
+) -> Rational64 {
     let mut pre_x = None;
     let mul_1 = solutions.0.checked_mul(&matrix[3]);
     let mul_2 = solutions.1.checked_mul(&matrix[1]);
@@ -73,9 +73,9 @@ fn calculate_pre_x_factor(
 }
 
 fn calculate_pre_y_factor(
-    matrix: [Ratio<i64>; 4],
-    solutions: (Ratio<i64>, Ratio<i64>),
-) -> Ratio<i64> {
+    matrix: [Rational64; 4],
+    solutions: (Rational64, Rational64),
+) -> Rational64 {
     let mut pre_y = None;
     let mul_1 = solutions.1.checked_mul(&matrix[0]);
     let mul_2 = solutions.0.checked_mul(&matrix[2]);
@@ -88,7 +88,7 @@ fn calculate_pre_y_factor(
     }
 }
 
-fn parse_input(input: &str) -> impl Iterator<Item = ([Ratio<i64>; 4], (Ratio<i64>, Ratio<i64>))> {
+fn parse_input(input: &str) -> impl Iterator<Item = ([Rational64; 4], (Rational64, Rational64))> {
     input
         .lines()
         // filter out empty lines
@@ -101,12 +101,12 @@ fn parse_input(input: &str) -> impl Iterator<Item = ([Ratio<i64>; 4], (Ratio<i64
             let (bx, by) = parse_line(line_b, "+")?;
             let (px, py) = parse_line(line_p, "=")?;
             let matrix = [
-                Ratio::from(ax),
-                Ratio::from(bx),
-                Ratio::from(ay),
-                Ratio::from(by),
+                Rational64::from(ax),
+                Rational64::from(bx),
+                Rational64::from(ay),
+                Rational64::from(by),
             ];
-            let solutions = (Ratio::from(px), Ratio::from(py));
+            let solutions = (Rational64::from(px), Rational64::from(py));
             Some((matrix, solutions))
         })
 }
@@ -129,11 +129,11 @@ fn parse_line(line: &str, pat: &'static str) -> Option<(i64, i64)> {
     Some((x, y))
 }
 
-fn get_inv_det(input: [Ratio<i64>; 4]) -> Option<Ratio<i64>> {
+fn get_inv_det(input: [Rational64; 4]) -> Option<Rational64> {
     let ad = input[0] * input[3];
     let bc = input[1] * input[2];
     let inv_det = ad - bc;
-    if inv_det != Ratio::from(0) {
+    if inv_det != Rational64::from(0) {
         Some(inv_det)
     } else {
         None
