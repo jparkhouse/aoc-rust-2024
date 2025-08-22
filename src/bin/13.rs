@@ -91,9 +91,12 @@ fn calculate_pre_y_factor(
 fn parse_input(input: &str) -> impl Iterator<Item = ([Ratio<i64>; 4], (Ratio<i64>, Ratio<i64>))> {
     input
         .lines()
+        // filter out empty lines
+        .filter(|line| !line.trim().is_empty())
+        // put into groups of 3
         .tuples()
-        // grab the next 4 lines and drop the empty one
-        .flat_map(|(line_a, line_b, line_p, _)| {
+        // process each 3-line group and map into our problem inputs
+        .flat_map(|(line_a, line_b, line_p)| {
             let (ax, ay) = parse_line(line_a, "+")?;
             let (bx, by) = parse_line(line_b, "+")?;
             let (px, py) = parse_line(line_p, "=")?;
